@@ -33,7 +33,7 @@
       font: 14px/1.45 system-ui, sans-serif;
       background: var(--bg);
       color: var(--fg);
-      max-width: 760px;
+      max-width: 860px;
       margin-inline: auto;
     }
     h1 {
@@ -51,7 +51,7 @@
     .head,
     .row {
       display: grid;
-      grid-template-columns: minmax(130px, 1.4fr) minmax(90px, .8fr) 110px 92px;
+      grid-template-columns: minmax(140px, 1.5fr) minmax(90px, .8fr) 90px 90px 92px;
       gap: 10px;
       align-items: center;
       padding: 10px 0;
@@ -103,9 +103,9 @@
   <div class="list" id="list"></div>
 
   <div class="foot">
-    All percentages show 24h change.<br>
-    Trend line shows recent saved updates.<br>
-    Light page. No live streaming. Updates every 2 hours.
+    All percentages are seeded values for now.<br>
+    24h = change over 24 hours. 7d = change over 7 days.<br>
+    Trend line shows 7 recent price points.
   </div>
 
   <script>
@@ -118,7 +118,7 @@
 
     function fmtPercent(v) {
       const sign = v > 0 ? "+" : "";
-      return sign + v.toFixed(1) + "%";
+      return sign + v.toFixed(2) + "%";
     }
 
     function changeClass(v) {
@@ -149,20 +149,23 @@
         <div class="head">
           <div>Market</div>
           <div class="price">Price</div>
-          <div class="change">Change (24h)</div>
+          <div class="change">24h</div>
+          <div class="change">7d</div>
           <div>Trend</div>
         </div>
       `;
 
       const rows = items.map(item => {
-        const cls = changeClass(item.change_pct);
+        const cls24 = changeClass(item.change_24h ?? 0);
+        const cls7 = changeClass(item.change_7d ?? 0);
         const decimals = item.decimals ?? 2;
         return `
           <div class="row">
             <div class="name">${item.label}</div>
             <div class="price">${fmtNumber(item.price, decimals)}</div>
-            <div class="change ${cls}">${fmtPercent(item.change_pct)}</div>
-            <div class="${cls}">${sparkline(item.sparkline)}</div>
+            <div class="change ${cls24}">${fmtPercent(item.change_24h ?? 0)}</div>
+            <div class="change ${cls7}">${fmtPercent(item.change_7d ?? 0)}</div>
+            <div class="${cls7}">${sparkline(item.sparkline)}</div>
           </div>
         `;
       }).join("");
