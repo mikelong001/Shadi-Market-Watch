@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="color-scheme" content="light dark">
-  <title>Shadi's Market Watch</title>
+  <title>Market Watch</title>
   <style>
     :root {
       --bg: #ffffff;
@@ -26,7 +26,9 @@
         --panel: #141821;
       }
     }
+
     * { box-sizing: border-box; }
+
     body {
       margin: 0;
       padding: 16px;
@@ -36,27 +38,32 @@
       max-width: 860px;
       margin-inline: auto;
     }
+
     h1 {
       margin: 0 0 6px;
       font-size: 22px;
     }
+
     .meta {
       color: var(--muted);
       margin-bottom: 14px;
       font-size: 13px;
     }
+
     .list {
       border-top: 1px solid var(--line);
     }
+
     .head,
     .row {
       display: grid;
-      grid-template-columns: minmax(140px, 1.5fr) minmax(90px, .8fr) 90px 90px 92px;
+      grid-template-columns: minmax(130px, 1.5fr) minmax(84px, .8fr) 72px 72px 88px;
       gap: 10px;
       align-items: center;
       padding: 10px 0;
       border-bottom: 1px solid var(--line);
     }
+
     .head {
       padding-top: 8px;
       padding-bottom: 8px;
@@ -66,25 +73,41 @@
       color: var(--muted);
       font-weight: 700;
     }
+
     .name {
       font-weight: 600;
+      min-width: 0;
     }
+
+    .label-full {
+      display: inline;
+    }
+
+    .label-short {
+      display: none;
+    }
+
     .price,
     .change {
       text-align: right;
       font-variant-numeric: tabular-nums;
+      white-space: nowrap;
     }
+
     .change {
       font-weight: 600;
     }
+
     .up { color: var(--up); }
     .down { color: var(--down); }
     .flat { color: var(--muted); }
+
     .spark {
-      width: 92px;
-      height: 26px;
+      width: 88px;
+      height: 24px;
       display: block;
     }
+
     .foot {
       margin-top: 14px;
       color: var(--muted);
@@ -93,6 +116,61 @@
       padding: 10px 12px;
       background: var(--panel);
       border-radius: 8px;
+    }
+
+    @media (max-width: 640px) {
+      body {
+        padding: 10px;
+        font-size: 12px;
+      }
+
+      h1 {
+        font-size: 18px;
+      }
+
+      .meta {
+        font-size: 12px;
+        margin-bottom: 10px;
+      }
+
+      .head,
+      .row {
+        grid-template-columns: minmax(92px, 1.2fr) minmax(64px, .7fr) 56px 56px 60px;
+        gap: 6px;
+        padding: 8px 0;
+      }
+
+      .head {
+        font-size: 10px;
+        letter-spacing: 0.02em;
+      }
+
+      .price,
+      .change {
+        font-size: 11px;
+      }
+
+      .name {
+        font-size: 11px;
+      }
+
+      .label-full {
+        display: none;
+      }
+
+      .label-short {
+        display: inline;
+      }
+
+      .spark {
+        width: 60px;
+        height: 20px;
+      }
+
+      .foot {
+        font-size: 11px;
+        padding: 9px 10px;
+      }
     }
   </style>
 </head>
@@ -103,10 +181,22 @@
   <div class="list" id="list"></div>
 
   <div class="foot">
-  Real joy lives in small moments, time with family, kind hearts, and a peaceful mind.
+    Real joy lives in small moments, time with family, kind hearts, and a peaceful mind.
   </div>
 
   <script>
+    const SHORT_LABELS = {
+      xaucad: "Gold",
+      xagcad: "Silver",
+      btccad: "BTC",
+      ethcad: "ETH",
+      usdcad: "USD/CAD",
+      eurcad: "EUR/CAD",
+      trycad: "TRY/CAD",
+      cadirr: "CAD/IRR",
+      usdirr: "USD/IRR"
+    };
+
     function fmtNumber(value, decimals = 2) {
       return new Intl.NumberFormat("en-CA", {
         maximumFractionDigits: decimals,
@@ -126,7 +216,7 @@
     }
 
     function sparkline(values) {
-      const w = 92, h = 26, p = 2;
+      const w = 88, h = 24, p = 2;
       const min = Math.min(...values);
       const max = Math.max(...values);
       const span = Math.max(max - min, 1e-9);
@@ -138,6 +228,14 @@
       return `<svg class="spark" viewBox="0 0 ${w} ${h}" aria-hidden="true">
         <polyline fill="none" stroke="currentColor" stroke-width="1.7" points="${pts}"></polyline>
       </svg>`;
+    }
+
+    function renderLabel(item) {
+      const shortLabel = SHORT_LABELS[item.key] || item.label;
+      return `
+        <span class="label-full">${item.label}</span>
+        <span class="label-short">${shortLabel}</span>
+      `;
     }
 
     function renderList(items) {
@@ -159,7 +257,7 @@
         const decimals = item.decimals ?? 2;
         return `
           <div class="row">
-            <div class="name">${item.label}</div>
+            <div class="name">${renderLabel(item)}</div>
             <div class="price">${fmtNumber(item.price, decimals)}</div>
             <div class="change ${cls24}">${fmtPercent(item.change_24h ?? 0)}</div>
             <div class="change ${cls7}">${fmtPercent(item.change_7d ?? 0)}</div>
@@ -177,7 +275,8 @@
         document.getElementById("meta").textContent = `Updated: ${data.updated_tehran}`;
         renderList(data.items);
       })
-      .catch(() => {
+      .catch((err) => {
+        console.error(err);
         document.getElementById("meta").textContent = "Could not load data.";
       });
   </script>
