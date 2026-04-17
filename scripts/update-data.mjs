@@ -5,6 +5,10 @@ const COINGECKO_API_KEY = process.env.COINGECKO_API_KEY;
 
 const outFile = new URL("../public/data.json", import.meta.url);
 
+const HISTORY_DAYS = 30;
+const RUNS_PER_DAY = 4; // every 6 hours
+const MAX_POINTS = HISTORY_DAYS * RUNS_PER_DAY;
+
 function pctChange(current, prev) {
   if (!prev || prev === 0) return 0;
   return ((current - prev) / prev) * 100;
@@ -55,7 +59,7 @@ function normalizeHistory(existingItem) {
     .sort((a, b) => new Date(a.t) - new Date(b.t));
 }
 
-function appendHistory(existingItem, nowIso, newPrice, maxPoints = 240) {
+function appendHistory(existingItem, nowIso, newPrice, maxPoints = MAX_POINTS) {
   const history = normalizeHistory(existingItem);
   const nowMs = new Date(nowIso).getTime();
   const last = history[history.length - 1];
@@ -63,7 +67,6 @@ function appendHistory(existingItem, nowIso, newPrice, maxPoints = 240) {
   if (last) {
     const lastMs = new Date(last.t).getTime();
 
-    // If the last point is effectively the same run, replace it.
     if (Math.abs(nowMs - lastMs) < 60 * 1000) {
       last.p = newPrice;
       last.t = nowIso;
@@ -258,7 +261,8 @@ async function main() {
     eth,
     usdRates,
     eurRates,
-    tryRates
+    tryRates,
+    cadRates
   ] = await Promise.all([
     getMetal("XAU", "CAD"),
     getMetal("XAG", "CAD"),
@@ -266,7 +270,8 @@ async function main() {
     getCoin("ethereum", "cad"),
     getFxLatest("USD"),
     getFxLatest("EUR"),
-    getFxLatest("TRY")
+    getFxLatest("TRY"),
+    getFxLatest("CAD")
   ]);
 
   const items = [
@@ -329,6 +334,22 @@ async function main() {
       label: "TRY/CAD",
       price: tryRates.CAD,
       decimals: 4
+    }),
+    buildItem({
+      existingData,
+      nowIso,
+      key: "cadirr",
+      label: "CAD/IRR",
+      price: cadRates.IRR,
+      decimals: 0
+    }),
+    buildItem({
+      existingData,
+      nowIso,
+      key: "usdirr",
+      label: "USD/IRR",
+      price: usdRates.IRR,
+      decimals: 0
     })
   ];
 
