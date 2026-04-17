@@ -9,6 +9,70 @@
       "change_pct": 0.6,
       "sparkline": [3279, 3288, 3294, 3302, 3310, 3318, 3321.4],
       "decimals": 2
+    },
+    {
+      "key": "xagcad",
+      "label": "Silver (XAG/CAD)",
+      "price": 43.11,
+      "change_pct": -0.2,
+      "sparkline": [43.8, 43.7, 43.6, 43.5, 43.4, 43.2, 43.11],
+      "decimals": 2
+    },
+    {
+      "key": "btccad",
+      "label": "BTC/CAD",
+      "price": 84750,
+      "change_pct": 1.8,
+      "sparkline": [82600, 83100, 83650, 84000, 84220, 84510, 84750],
+      "decimals": 0
+    },
+    {
+      "key": "ethcad",
+      "label": "ETH/CAD",
+      "price": 4120,
+      "change_pct": 0.9,
+      "sparkline": [3990, 4015, 4040, 4060, 4085, 4100, 4120],
+      "decimals": 0
+    },
+    {
+      "key": "trycad",
+      "label": "TRY/CAD",
+      "price": 0.0421,
+      "change_pct": 0.6,
+      "sparkline": [0.0412, 0.0414, 0.0415, 0.0417, 0.0418, 0.0420, 0.0421],
+      "decimals": 4
+    },
+    {
+      "key": "usdcad",
+      "label": "USD/CAD",
+      "price": 1.3842,
+      "change_pct": 0.2,
+      "sparkline": [1.3795, 1.3801, 1.3814, 1.3820, 1.3830, 1.3838, 1.3842],
+      "decimals": 4
+    },
+    {
+      "key": "eurcad",
+      "label": "EUR/CAD",
+      "price": 1.5711,
+      "change_pct": -0.1,
+      "sparkline": [1.5745, 1.5738, 1.5730, 1.5724, 1.5720, 1.5715, 1.5711],
+      "decimals": 4
+    },
+    {
+      "key": "cadirr",
+      "label": "CAD/IRR",
+      "price": 595700,
+      "change_pct": 0.6,
+      "sparkline": [589500, 590800, 592200, 593400, 594000, 595000, 595700],
+      "decimals": 0
+    },
+    {
+      "key": "usdirr",
+      "label": "USD/IRR",
+      "price": 824500,
+      "change_pct": 0.4,
+      "sparkline": [816000, 817800, 819400, 821200, 822500, 823600, 824500],
+      "decimals": 0
     }
   ]
 }
