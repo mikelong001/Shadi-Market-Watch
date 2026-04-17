@@ -3,7 +3,7 @@ name: Update Market Watch
 on:
   workflow_dispatch:
   schedule:
-    - cron: "15 */2 * * *"
+    - cron: "15 */6 * * *"
       timezone: "Asia/Tehran"
 
 jobs:
