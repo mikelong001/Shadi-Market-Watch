@@ -127,13 +127,11 @@ function compute7dChange(history, nowIso) {
 
 function build7DaySparkline(history, nowIso, fallbackPrice) {
   const nowMs = new Date(nowIso).getTime();
-  const startMs = nowMs - 7 * 24 * 60 * 60 * 1000;
   const toleranceMs = 18 * 60 * 60 * 1000;
-
   const points = [];
 
-  for (let i = 0; i < 7; i++) {
-    const targetMs = startMs + i * 24 * 60 * 60 * 1000;
+  for (let daysAgo = 6; daysAgo >= 0; daysAgo--) {
+    const targetMs = nowMs - daysAgo * 24 * 60 * 60 * 1000;
     const point = findClosestPoint(history, targetMs, toleranceMs);
 
     if (point) {
