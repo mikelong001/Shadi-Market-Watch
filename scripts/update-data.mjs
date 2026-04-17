@@ -64,7 +64,7 @@ async function getFxSeries(from, to) {
   const end = dateOffset(0);
 
   const tf = await getJson(
-    `https://api.exchangerate.host/timeframe?access_key=${EXCHANGERATE_KEY}&source=${from}&currencies=${to}&start_date=${start}&end_date=${end}`
+    `https://api.exchangerate.host/timeframe?source=${from}&currencies=${to}&start_date=${start}&end_date=${end}`
   );
 
   const points = Object.keys(tf.quotes)
