@@ -1,0 +1,14 @@
+{
+  "updated_tehran": "8:30 PM Tehran",
+  "updated_iso": "2026-04-17T17:00:00Z",
+  "items": [
+    {
+      "key": "xaucad",
+      "label": "Gold (XAU/CAD)",
+      "price": 3321.4,
+      "change_pct": 0.6,
+      "sparkline": [3279, 3288, 3294, 3302, 3310, 3318, 3321.4],
+      "decimals": 2
+    }
+  ]
+}
