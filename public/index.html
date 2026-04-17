@@ -13,6 +13,7 @@
       --line: #e5e5e5;
       --up: #0a7f2e;
       --down: #b42318;
+      --panel: #f8f8f8;
     }
     @media (prefers-color-scheme: dark) {
       :root {
@@ -22,13 +23,14 @@
         --line: #23262d;
         --up: #4ade80;
         --down: #f87171;
+        --panel: #141821;
       }
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
       padding: 16px;
-      font: 14px/1.4 system-ui, sans-serif;
+      font: 14px/1.45 system-ui, sans-serif;
       background: var(--bg);
       color: var(--fg);
       max-width: 760px;
@@ -46,52 +48,83 @@
     .list {
       border-top: 1px solid var(--line);
     }
+    .head,
     .row {
       display: grid;
-      grid-template-columns: minmax(120px, 1.2fr) minmax(90px, .8fr) 70px 92px;
+      grid-template-columns: minmax(130px, 1.4fr) minmax(90px, .8fr) 110px 92px;
       gap: 10px;
       align-items: center;
       padding: 10px 0;
       border-bottom: 1px solid var(--line);
     }
-    .name { font-weight: 600; }
-    .price { text-align: right; font-variant-numeric: tabular-nums; }
+    .head {
+      padding-top: 8px;
+      padding-bottom: 8px;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+      font-weight: 700;
+    }
+    .name {
+      font-weight: 600;
+    }
+    .price,
     .change {
       text-align: right;
       font-variant-numeric: tabular-nums;
+    }
+    .change {
       font-weight: 600;
     }
     .up { color: var(--up); }
     .down { color: var(--down); }
+    .flat { color: var(--muted); }
     .spark {
       width: 92px;
       height: 26px;
       display: block;
     }
     .foot {
-      margin-top: 12px;
+      margin-top: 14px;
       color: var(--muted);
       font-size: 12px;
+      line-height: 1.5;
+      padding: 10px 12px;
+      background: var(--panel);
+      border-radius: 8px;
     }
   </style>
 </head>
 <body>
   <h1>Market Watch</h1>
   <div class="meta" id="meta">Loading…</div>
+
   <div class="list" id="list"></div>
-  <div class="foot">Light page. No live streaming. Updates every 2 hours.</div>
+
+  <div class="foot">
+    All percentages show 24h change.<br>
+    Trend line shows recent saved updates.<br>
+    Light page. No live streaming. Updates every 2 hours.
+  </div>
 
   <script>
     function fmtNumber(value, decimals = 2) {
       return new Intl.NumberFormat("en-CA", {
         maximumFractionDigits: decimals,
-        minimumFractionDigits: decimals > 0 ? 2 : 0
+        minimumFractionDigits: decimals > 0 ? decimals : 0
       }).format(value);
     }
 
     function fmtPercent(v) {
       const sign = v > 0 ? "+" : "";
       return sign + v.toFixed(1) + "%";
+    }
+
+    function changeClass(v) {
+      if (v > 0) return "up";
+      if (v < 0) return "down";
+      return "flat";
     }
 
     function sparkline(values) {
@@ -109,25 +142,39 @@
       </svg>`;
     }
 
+    function renderList(items) {
+      const list = document.getElementById("list");
+
+      const head = `
+        <div class="head">
+          <div>Market</div>
+          <div class="price">Price</div>
+          <div class="change">Change (24h)</div>
+          <div>Trend</div>
+        </div>
+      `;
+
+      const rows = items.map(item => {
+        const cls = changeClass(item.change_pct);
+        const decimals = item.decimals ?? 2;
+        return `
+          <div class="row">
+            <div class="name">${item.label}</div>
+            <div class="price">${fmtNumber(item.price, decimals)}</div>
+            <div class="change ${cls}">${fmtPercent(item.change_pct)}</div>
+            <div class="${cls}">${sparkline(item.sparkline)}</div>
+          </div>
+        `;
+      }).join("");
+
+      list.innerHTML = head + rows;
+    }
+
     fetch("./data.json", { cache: "default" })
       .then(r => r.json())
       .then(data => {
-        const meta = document.getElementById("meta");
-        meta.textContent = `Updated: ${data.updated_tehran}`;
-
-        const list = document.getElementById("list");
-        list.innerHTML = data.items.map(item => {
-          const cls = item.change_pct >= 0 ? "up" : "down";
-          const decimals = item.decimals ?? 2;
-          return `
-            <div class="row">
-              <div class="name">${item.label}</div>
-              <div class="price">${fmtNumber(item.price, decimals)}</div>
-              <div class="change ${cls}">${fmtPercent(item.change_pct)}</div>
-              <div class="${cls}">${sparkline(item.sparkline)}</div>
-            </div>
-          `;
-        }).join("");
+        document.getElementById("meta").textContent = `Updated: ${data.updated_tehran}`;
+        renderList(data.items);
       })
       .catch(() => {
         document.getElementById("meta").textContent = "Could not load data.";
