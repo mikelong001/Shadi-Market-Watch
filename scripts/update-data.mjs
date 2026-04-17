@@ -67,9 +67,9 @@ async function getFxSeries(from, to) {
     `https://api.exchangerate.host/timeframe?source=${from}&currencies=${to}&start_date=${start}&end_date=${end}`
   );
 
-  const points = Object.keys(tf.quotes)
+  const points = Object.keys(tf.rates)
     .sort()
-    .map(date => tf.quotes[date][`${from}${to}`]);
+    .map(date => tf.rates[date][to]);
 
   const current = points.at(-1);
   const prev = points.at(-2);
