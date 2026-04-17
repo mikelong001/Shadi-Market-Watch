@@ -44,6 +44,7 @@ function getExistingItem(existingData, key) {
 
 function normalizeHistory(existingItem) {
   if (!Array.isArray(existingItem?.history)) return [];
+
   return existingItem.history
     .filter(point =>
       point &&
@@ -54,78 +55,145 @@ function normalizeHistory(existingItem) {
     .sort((a, b) => new Date(a.t) - new Date(b.t));
 }
 
-function appendHistory(existingItem, nowIso, newPrice, maxPoints = 48) {
+function appendHistory(existingItem, nowIso, newPrice, maxPoints = 240) {
   const history = normalizeHistory(existingItem);
+  const nowMs = new Date(nowIso).getTime();
   const last = history[history.length - 1];
 
-  if (last && last.t === nowIso) {
-    last.p = newPrice;
-    return history.slice(-maxPoints);
+  if (last) {
+    const lastMs = new Date(last.t).getTime();
+
+    // If the last point is effectively the same run, replace it.
+    if (Math.abs(nowMs - lastMs) < 60 * 1000) {
+      last.p = newPrice;
+      last.t = nowIso;
+      return history.slice(-maxPoints);
+    }
   }
 
   history.push({ t: nowIso, p: newPrice });
   return history.slice(-maxPoints);
 }
 
-function getClosest24hPrice(history, nowIso) {
-  if (!history.length) return null;
-
-  const target = new Date(nowIso).getTime() - 24 * 60 * 60 * 1000;
-
+function findClosestPoint(history, targetMs, toleranceMs) {
   let best = null;
   let bestDiff = Infinity;
 
   for (const point of history) {
-    const t = new Date(point.t).getTime();
-    const diff = Math.abs(t - target);
+    const pointMs = new Date(point.t).getTime();
+    const diff = Math.abs(pointMs - targetMs);
+
     if (diff < bestDiff) {
       best = point;
       bestDiff = diff;
     }
   }
 
-  // Need something reasonably close to 24h ago.
-  // 6 hours tolerance works fine for a 2-hour schedule.
-  if (bestDiff > 6 * 60 * 60 * 1000) return null;
-
-  return best.p;
+  if (!best || bestDiff > toleranceMs) return null;
+  return best;
 }
 
-function historyToSparkline(history, desiredLength = 7, fallbackPrice = 0) {
-  const vals = history.map(point => point.p).slice(-desiredLength);
-
-  if (!vals.length) return Array(desiredLength).fill(fallbackPrice);
-  while (vals.length < desiredLength) vals.unshift(vals[0]);
-
-  return vals;
-}
-
-function buildItemFromApi(existingData, nowIso, key, label, price, decimals, apiChangePct = 0) {
-  const existingItem = getExistingItem(existingData, key);
-  const history = appendHistory(existingItem, nowIso, price);
-
-  return {
-    key,
-    label,
-    price,
-    change_pct: typeof apiChangePct === "number" ? apiChangePct : 0,
-    sparkline: historyToSparkline(history, 7, price),
+function compute24hChange(history, nowIso) {
+  const nowMs = new Date(nowIso).getTime();
+  const point24h = findClosestPoint(
     history,
-    decimals
-  };
+    nowMs - 24 * 60 * 60 * 1000,
+    6 * 60 * 60 * 1000
+  );
+
+  if (!point24h) return null;
+
+  const current = history[history.length - 1]?.p;
+  if (typeof current !== "number") return null;
+
+  return pctChange(current, point24h.p);
 }
 
-function buildFxItem(existingData, nowIso, key, label, price, decimals) {
+function compute7dChange(history, nowIso) {
+  const nowMs = new Date(nowIso).getTime();
+  const point7d = findClosestPoint(
+    history,
+    nowMs - 7 * 24 * 60 * 60 * 1000,
+    18 * 60 * 60 * 1000
+  );
+
+  if (!point7d) return null;
+
+  const current = history[history.length - 1]?.p;
+  if (typeof current !== "number") return null;
+
+  return pctChange(current, point7d.p);
+}
+
+function build7DaySparkline(history, nowIso, fallbackPrice) {
+  const nowMs = new Date(nowIso).getTime();
+  const startMs = nowMs - 7 * 24 * 60 * 60 * 1000;
+  const toleranceMs = 18 * 60 * 60 * 1000;
+
+  const points = [];
+
+  for (let i = 0; i < 7; i++) {
+    const targetMs = startMs + i * 24 * 60 * 60 * 1000;
+    const point = findClosestPoint(history, targetMs, toleranceMs);
+
+    if (point) {
+      points.push(point.p);
+    } else if (points.length) {
+      points.push(points[points.length - 1]);
+    } else {
+      points.push(fallbackPrice);
+    }
+  }
+
+  return points;
+}
+
+function roundTo(value, decimals = 2) {
+  const factor = 10 ** decimals;
+  return Math.round(value * factor) / factor;
+}
+
+function buildItem({
+  existingData,
+  nowIso,
+  key,
+  label,
+  price,
+  decimals,
+  fallback24h = null,
+  fallback7d = null
+}) {
   const existingItem = getExistingItem(existingData, key);
   const history = appendHistory(existingItem, nowIso, price);
-  const prev24h = getClosest24hPrice(history, nowIso);
+
+  const computed24h = compute24hChange(history, nowIso);
+  const computed7d = compute7dChange(history, nowIso);
+
+  const change24h =
+    computed24h !== null
+      ? computed24h
+      : typeof fallback24h === "number"
+        ? fallback24h
+        : typeof existingItem?.change_24h === "number"
+          ? existingItem.change_24h
+          : 0;
+
+  const change7d =
+    computed7d !== null
+      ? computed7d
+      : typeof fallback7d === "number"
+        ? fallback7d
+        : typeof existingItem?.change_7d === "number"
+          ? existingItem.change_7d
+          : 0;
 
   return {
     key,
     label,
     price,
-    change_pct: prev24h ? pctChange(price, prev24h) : 0,
-    sparkline: historyToSparkline(history, 7, price),
+    change_24h: roundTo(change24h, 2),
+    change_7d: roundTo(change7d, 2),
+    sparkline: build7DaySparkline(history, nowIso, price),
     history,
     decimals
   };
@@ -149,7 +217,7 @@ async function getMetal(symbol, currency) {
 
   return {
     price: current.price,
-    change_pct: typeof current.chp === "number" ? current.chp : 0
+    change_24h: typeof current.chp === "number" ? current.chp : null
   };
 }
 
@@ -166,7 +234,7 @@ async function getCoin(id, vs = "cad") {
 
   return {
     price: current[id][vs],
-    change_pct: current[id][`${vs}_24h_change`] ?? 0
+    change_24h: current[id][`${vs}_24h_change`] ?? null
   };
 }
 
@@ -192,8 +260,7 @@ async function main() {
     eth,
     usdRates,
     eurRates,
-    tryRates,
-    cadRates
+    tryRates
   ] = await Promise.all([
     getMetal("XAU", "CAD"),
     getMetal("XAG", "CAD"),
@@ -201,21 +268,70 @@ async function main() {
     getCoin("ethereum", "cad"),
     getFxLatest("USD"),
     getFxLatest("EUR"),
-    getFxLatest("TRY"),
-    getFxLatest("CAD")
+    getFxLatest("TRY")
   ]);
 
   const items = [
-    buildItemFromApi(existingData, nowIso, "xaucad", "Gold (XAU/CAD)", gold.price, 2, gold.change_pct),
-    buildItemFromApi(existingData, nowIso, "xagcad", "Silver (XAG/CAD)", silver.price, 2, silver.change_pct),
-    buildItemFromApi(existingData, nowIso, "btccad", "BTC/CAD", btc.price, 0, btc.change_pct),
-    buildItemFromApi(existingData, nowIso, "ethcad", "ETH/CAD", eth.price, 0, eth.change_pct),
-
-    buildFxItem(existingData, nowIso, "usdcad", "USD/CAD", usdRates.CAD, 4),
-    buildFxItem(existingData, nowIso, "eurcad", "EUR/CAD", eurRates.CAD, 4),
-    buildFxItem(existingData, nowIso, "trycad", "TRY/CAD", tryRates.CAD, 4),
-    buildFxItem(existingData, nowIso, "cadirr", "CAD/IRR", cadRates.IRR, 0),
-    buildFxItem(existingData, nowIso, "usdirr", "USD/IRR", usdRates.IRR, 0)
+    buildItem({
+      existingData,
+      nowIso,
+      key: "xaucad",
+      label: "Gold (XAU/CAD)",
+      price: gold.price,
+      decimals: 2,
+      fallback24h: gold.change_24h
+    }),
+    buildItem({
+      existingData,
+      nowIso,
+      key: "xagcad",
+      label: "Silver (XAG/CAD)",
+      price: silver.price,
+      decimals: 2,
+      fallback24h: silver.change_24h
+    }),
+    buildItem({
+      existingData,
+      nowIso,
+      key: "btccad",
+      label: "BTC/CAD",
+      price: btc.price,
+      decimals: 0,
+      fallback24h: btc.change_24h
+    }),
+    buildItem({
+      existingData,
+      nowIso,
+      key: "ethcad",
+      label: "ETH/CAD",
+      price: eth.price,
+      decimals: 0,
+      fallback24h: eth.change_24h
+    }),
+    buildItem({
+      existingData,
+      nowIso,
+      key: "usdcad",
+      label: "USD/CAD",
+      price: usdRates.CAD,
+      decimals: 4
+    }),
+    buildItem({
+      existingData,
+      nowIso,
+      key: "eurcad",
+      label: "EUR/CAD",
+      price: eurRates.CAD,
+      decimals: 4
+    }),
+    buildItem({
+      existingData,
+      nowIso,
+      key: "trycad",
+      label: "TRY/CAD",
+      price: tryRates.CAD,
+      decimals: 4
+    })
   ];
 
   const payload = {
