@@ -37,7 +37,7 @@ async function getJson(url, options = {}) {
 // GoldAPI
 async function getMetal(symbol, currency) {
   const current = await getJson(
-    `https://api.goldapi.net/v1/${symbol}/${currency}`,
+    `https://www.goldapi.io/api/${symbol}/${currency}`,
     { headers: { "x-access-token": GOLDAPI_KEY } }
   );
 
@@ -45,7 +45,7 @@ async function getMetal(symbol, currency) {
   const hist = [];
   for (const d of dates) {
     const row = await getJson(
-      `https://api.goldapi.net/v1/historical/${symbol}/${currency}/${d}`,
+      `https://www.goldapi.io/api/${symbol}/${currency}/${d}`,
       { headers: { "x-access-token": GOLDAPI_KEY } }
     );
     hist.push(row.price);
