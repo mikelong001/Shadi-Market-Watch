@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Market Watch</title>
+  <style>
+    :root {
+      --bg: #ffffff;
+      --fg: #111111;
+      --muted: #666666;
+      --line: #e5e5e5;
+      --up: #0a7f2e;
+      --down: #b42318;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0f1115;
+        --fg: #f4f4f5;
+        --muted: #9ca3af;
+        --line: #23262d;
+        --up: #4ade80;
+        --down: #f87171;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 16px;
+      font: 14px/1.4 system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--fg);
+      max-width: 760px;
+      margin-inline: auto;
+    }
+    h1 {
+      margin: 0 0 6px;
+      font-size: 22px;
+    }
+    .meta {
+      color: var(--muted);
+      margin-bottom: 14px;
+      font-size: 13px;
+    }
+    .list {
+      border-top: 1px solid var(--line);
+    }
+    .row {
+      display: grid;
+      grid-template-columns: minmax(120px, 1.2fr) minmax(90px, .8fr) 70px 92px;
+      gap: 10px;
+      align-items: center;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--line);
+    }
+    .name { font-weight: 600; }
+    .price { text-align: right; font-variant-numeric: tabular-nums; }
+    .change {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      font-weight: 600;
+    }
+    .up { color: var(--up); }
+    .down { color: var(--down); }
+    .spark {
+      width: 92px;
+      height: 26px;
+      display: block;
+    }
+    .foot {
+      margin-top: 12px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Market Watch</h1>
+  <div class="meta" id="meta">Loading…</div>
+  <div class="list" id="list"></div>
+  <div class="foot">Light page. No live streaming. Updates every 2 hours.</div>
+
+  <script>
+    function fmtNumber(value, decimals = 2) {
+      return new Intl.NumberFormat("en-CA", {
+        maximumFractionDigits: decimals,
+        minimumFractionDigits: decimals > 0 ? 2 : 0
+      }).format(value);
+    }
+
+    function fmtPercent(v) {
+      const sign = v > 0 ? "+" : "";
+      return sign + v.toFixed(1) + "%";
+    }
+
+    function sparkline(values) {
+      const w = 92, h = 26, p = 2;
+      const min = Math.min(...values);
+      const max = Math.max(...values);
+      const span = Math.max(max - min, 1e-9);
+      const pts = values.map((v, i) => {
+        const x = p + i * ((w - p * 2) / Math.max(values.length - 1, 1));
+        const y = h - p - ((v - min) / span) * (h - p * 2);
+        return `${x},${y}`;
+      }).join(" ");
+      return `<svg class="spark" viewBox="0 0 ${w} ${h}" aria-hidden="true">
+        <polyline fill="none" stroke="currentColor" stroke-width="1.7" points="${pts}"></polyline>
+      </svg>`;
+    }
+
+    fetch("./data.json", { cache: "default" })
+      .then(r => r.json())
+      .then(data => {
+        const meta = document.getElementById("meta");
+        meta.textContent = `Updated: ${data.updated_tehran}`;
+
+        const list = document.getElementById("list");
+        list.innerHTML = data.items.map(item => {
+          const cls = item.change_pct >= 0 ? "up" : "down";
+          const decimals = item.decimals ?? 2;
+          return `
+            <div class="row">
+              <div class="name">${item.label}</div>
+              <div class="price">${fmtNumber(item.price, decimals)}</div>
+              <div class="change ${cls}">${fmtPercent(item.change_pct)}</div>
+              <div class="${cls}">${sparkline(item.sparkline)}</div>
+            </div>
+          `;
+        }).join("");
+      })
+      .catch(() => {
+        document.getElementById("meta").textContent = "Could not load data.";
+      });
+  </script>
+</body>
+</html>
