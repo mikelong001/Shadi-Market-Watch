@@ -42,27 +42,91 @@ function getExistingItem(existingData, key) {
   return existingData.items.find(item => item.key === key);
 }
 
-function normalizeSparkline(existingItem, newPrice, desiredLength = 7) {
-  const prev = Array.isArray(existingItem?.sparkline) ? existingItem.sparkline : [];
-  const next = [...prev, newPrice].slice(-desiredLength);
-
-  if (next.length === 0) return Array(desiredLength).fill(newPrice);
-  while (next.length < desiredLength) next.unshift(next[0]);
-
-  return next;
+function normalizeHistory(existingItem) {
+  if (!Array.isArray(existingItem?.history)) return [];
+  return existingItem.history
+    .filter(point =>
+      point &&
+      typeof point.t === "string" &&
+      typeof point.p === "number" &&
+      Number.isFinite(point.p)
+    )
+    .sort((a, b) => new Date(a.t) - new Date(b.t));
 }
 
-function buildItem(existingData, key, label, price, decimals, explicitChangePct = null) {
+function appendHistory(existingItem, nowIso, newPrice, maxPoints = 48) {
+  const history = normalizeHistory(existingItem);
+  const last = history[history.length - 1];
+
+  if (last && last.t === nowIso) {
+    last.p = newPrice;
+    return history.slice(-maxPoints);
+  }
+
+  history.push({ t: nowIso, p: newPrice });
+  return history.slice(-maxPoints);
+}
+
+function getClosest24hPrice(history, nowIso) {
+  if (!history.length) return null;
+
+  const target = new Date(nowIso).getTime() - 24 * 60 * 60 * 1000;
+
+  let best = null;
+  let bestDiff = Infinity;
+
+  for (const point of history) {
+    const t = new Date(point.t).getTime();
+    const diff = Math.abs(t - target);
+    if (diff < bestDiff) {
+      best = point;
+      bestDiff = diff;
+    }
+  }
+
+  // Need something reasonably close to 24h ago.
+  // 6 hours tolerance works fine for a 2-hour schedule.
+  if (bestDiff > 6 * 60 * 60 * 1000) return null;
+
+  return best.p;
+}
+
+function historyToSparkline(history, desiredLength = 7, fallbackPrice = 0) {
+  const vals = history.map(point => point.p).slice(-desiredLength);
+
+  if (!vals.length) return Array(desiredLength).fill(fallbackPrice);
+  while (vals.length < desiredLength) vals.unshift(vals[0]);
+
+  return vals;
+}
+
+function buildItemFromApi(existingData, nowIso, key, label, price, decimals, apiChangePct = 0) {
   const existingItem = getExistingItem(existingData, key);
-  const sparkline = normalizeSparkline(existingItem, price, 7);
-  const prev = sparkline.length > 1 ? sparkline[sparkline.length - 2] : price;
+  const history = appendHistory(existingItem, nowIso, price);
 
   return {
     key,
     label,
     price,
-    change_pct: explicitChangePct ?? pctChange(price, prev),
-    sparkline,
+    change_pct: typeof apiChangePct === "number" ? apiChangePct : 0,
+    sparkline: historyToSparkline(history, 7, price),
+    history,
+    decimals
+  };
+}
+
+function buildFxItem(existingData, nowIso, key, label, price, decimals) {
+  const existingItem = getExistingItem(existingData, key);
+  const history = appendHistory(existingItem, nowIso, price);
+  const prev24h = getClosest24hPrice(history, nowIso);
+
+  return {
+    key,
+    label,
+    price,
+    change_pct: prev24h ? pctChange(price, prev24h) : 0,
+    sparkline: historyToSparkline(history, 7, price),
+    history,
     decimals
   };
 }
@@ -85,7 +149,7 @@ async function getMetal(symbol, currency) {
 
   return {
     price: current.price,
-    change_pct: typeof current.chp === "number" ? current.chp : null
+    change_pct: typeof current.chp === "number" ? current.chp : 0
   };
 }
 
@@ -102,11 +166,11 @@ async function getCoin(id, vs = "cad") {
 
   return {
     price: current[id][vs],
-    change_pct: current[id][`${vs}_24h_change`] ?? null
+    change_pct: current[id][`${vs}_24h_change`] ?? 0
   };
 }
 
-// FX
+// FX latest
 async function getFxLatest(base) {
   const data = await getJson(`https://open.er-api.com/v6/latest/${base}`);
 
@@ -118,7 +182,7 @@ async function getFxLatest(base) {
 }
 
 async function main() {
-  const now = new Date().toISOString();
+  const nowIso = new Date().toISOString();
   const existingData = await readExistingData();
 
   const [
@@ -142,31 +206,27 @@ async function main() {
   ]);
 
   const items = [
-    buildItem(existingData, "xaucad", "Gold (XAU/CAD)", gold.price, 2, gold.change_pct),
-    buildItem(existingData, "xagcad", "Silver (XAG/CAD)", silver.price, 2, silver.change_pct),
-    buildItem(existingData, "btccad", "BTC/CAD", btc.price, 0, btc.change_pct),
-    buildItem(existingData, "ethcad", "ETH/CAD", eth.price, 0, eth.change_pct),
-    buildItem(existingData, "usdcad", "USD/CAD", usdRates.CAD, 4),
-    buildItem(existingData, "eurcad", "EUR/CAD", eurRates.CAD, 4),
-    buildItem(existingData, "trycad", "TRY/CAD", tryRates.CAD, 4),
-    buildItem(existingData, "cadirr", "CAD/IRR", cadRates.IRR, 0),
-    buildItem(existingData, "usdirr", "USD/IRR", usdRates.IRR, 0)
+    buildItemFromApi(existingData, nowIso, "xaucad", "Gold (XAU/CAD)", gold.price, 2, gold.change_pct),
+    buildItemFromApi(existingData, nowIso, "xagcad", "Silver (XAG/CAD)", silver.price, 2, silver.change_pct),
+    buildItemFromApi(existingData, nowIso, "btccad", "BTC/CAD", btc.price, 0, btc.change_pct),
+    buildItemFromApi(existingData, nowIso, "ethcad", "ETH/CAD", eth.price, 0, eth.change_pct),
+
+    buildFxItem(existingData, nowIso, "usdcad", "USD/CAD", usdRates.CAD, 4),
+    buildFxItem(existingData, nowIso, "eurcad", "EUR/CAD", eurRates.CAD, 4),
+    buildFxItem(existingData, nowIso, "trycad", "TRY/CAD", tryRates.CAD, 4),
+    buildFxItem(existingData, nowIso, "cadirr", "CAD/IRR", cadRates.IRR, 0),
+    buildFxItem(existingData, nowIso, "usdirr", "USD/IRR", usdRates.IRR, 0)
   ];
 
   const payload = {
-    updated_iso: now,
-    updated_tehran: tehranTime(now),
+    updated_iso: nowIso,
+    updated_tehran: tehranTime(nowIso),
     items
   };
 
   await fs.writeFile(outFile, JSON.stringify(payload, null, 2) + "\n", "utf8");
   console.log("Updated public/data.json");
 }
-
-main().catch(err => {
-  console.error(err);
-  process.exit(1);
-});
 
 main().catch(err => {
   console.error(err);
