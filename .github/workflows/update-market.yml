@@ -24,7 +24,6 @@ jobs:
       - name: Update data
         env:
           GOLDAPI_KEY: ${{ secrets.GOLDAPI_KEY }}
-          EXCHANGERATE_KEY: ${{ secrets.EXCHANGERATE_KEY }}
           COINGECKO_API_KEY: ${{ secrets.COINGECKO_API_KEY }}
         run: node scripts/update-data.mjs
 
