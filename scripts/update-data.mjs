@@ -42,26 +42,26 @@ function getExistingItem(existingData, key) {
   return existingData.items.find(item => item.key === key);
 }
 
-function rollSparkline(existingItem, newPrice, desiredLength = 7) {
+function normalizeSparkline(existingItem, newPrice, desiredLength = 7) {
   const prev = Array.isArray(existingItem?.sparkline) ? existingItem.sparkline : [];
   const next = [...prev, newPrice].slice(-desiredLength);
 
-  if (next.length === 0) return [newPrice];
+  if (next.length === 0) return Array(desiredLength).fill(newPrice);
   while (next.length < desiredLength) next.unshift(next[0]);
 
   return next;
 }
 
-function buildItem(existingData, key, label, price, decimals) {
+function buildItem(existingData, key, label, price, decimals, explicitChangePct = null) {
   const existingItem = getExistingItem(existingData, key);
-  const sparkline = rollSparkline(existingItem, price, 7);
+  const sparkline = normalizeSparkline(existingItem, price, 7);
   const prev = sparkline.length > 1 ? sparkline[sparkline.length - 2] : price;
 
   return {
     key,
     label,
     price,
-    change_pct: pctChange(price, prev),
+    change_pct: explicitChangePct ?? pctChange(price, prev),
     sparkline,
     decimals
   };
@@ -83,7 +83,10 @@ async function getMetal(symbol, currency) {
     { headers }
   );
 
-  return current.price;
+  return {
+    price: current.price,
+    change_pct: typeof current.chp === "number" ? current.chp : null
+  };
 }
 
 // CoinGecko
@@ -93,14 +96,17 @@ async function getCoin(id, vs = "cad") {
     : {};
 
   const current = await getJson(
-    `https://api.coingecko.com/api/v3/simple/price?ids=${id}&vs_currencies=${vs}`,
+    `https://api.coingecko.com/api/v3/simple/price?ids=${id}&vs_currencies=${vs}&include_24hr_change=true`,
     { headers }
   );
 
-  return current[id][vs];
+  return {
+    price: current[id][vs],
+    change_pct: current[id][`${vs}_24h_change`] ?? null
+  };
 }
 
-// ExchangeRate-API open access
+// FX
 async function getFxLatest(base) {
   const data = await getJson(`https://open.er-api.com/v6/latest/${base}`);
 
@@ -116,10 +122,10 @@ async function main() {
   const existingData = await readExistingData();
 
   const [
-    goldPrice,
-    silverPrice,
-    btcPrice,
-    ethPrice,
+    gold,
+    silver,
+    btc,
+    eth,
     usdRates,
     eurRates,
     tryRates,
@@ -136,10 +142,10 @@ async function main() {
   ]);
 
   const items = [
-    buildItem(existingData, "xaucad", "Gold (XAU/CAD)", goldPrice, 2),
-    buildItem(existingData, "xagcad", "Silver (XAG/CAD)", silverPrice, 2),
-    buildItem(existingData, "btccad", "BTC/CAD", btcPrice, 0),
-    buildItem(existingData, "ethcad", "ETH/CAD", ethPrice, 0),
+    buildItem(existingData, "xaucad", "Gold (XAU/CAD)", gold.price, 2, gold.change_pct),
+    buildItem(existingData, "xagcad", "Silver (XAG/CAD)", silver.price, 2, silver.change_pct),
+    buildItem(existingData, "btccad", "BTC/CAD", btc.price, 0, btc.change_pct),
+    buildItem(existingData, "ethcad", "ETH/CAD", eth.price, 0, eth.change_pct),
     buildItem(existingData, "usdcad", "USD/CAD", usdRates.CAD, 4),
     buildItem(existingData, "eurcad", "EUR/CAD", eurRates.CAD, 4),
     buildItem(existingData, "trycad", "TRY/CAD", tryRates.CAD, 4),
