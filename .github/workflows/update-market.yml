@@ -25,6 +25,7 @@ jobs:
         env:
           GOLDAPI_KEY: ${{ secrets.GOLDAPI_KEY }}
           COINGECKO_API_KEY: ${{ secrets.COINGECKO_API_KEY }}
+          METALS_DEV_KEY: ${{ secrets.METALS_DEV_KEY }}
         run: node scripts/update-data.mjs
 
       - name: Commit and push if changed
