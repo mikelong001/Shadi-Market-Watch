@@ -2,11 +2,12 @@ import fs from "node:fs/promises";
 
 const GOLDAPI_KEY = process.env.GOLDAPI_KEY;
 const COINGECKO_API_KEY = process.env.COINGECKO_API_KEY;
+const METALS_DEV_KEY = process.env.METALS_DEV_KEY;
 
 const outFile = new URL("../public/data.json", import.meta.url);
 
 const HISTORY_DAYS = 30;
-const RUNS_PER_DAY = 4; // every 6 hours
+const RUNS_PER_DAY = 4;
 const MAX_POINTS = HISTORY_DAYS * RUNS_PER_DAY;
 
 function pctChange(current, prev) {
@@ -27,10 +28,17 @@ function tehranTime(iso) {
 
 async function getJson(url, options = {}) {
   const res = await fetch(url, options);
-  if (!res.ok) {
-    throw new Error(`HTTP ${res.status} for ${url}`);
-  }
+  if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
   return res.json();
+}
+
+async function safeGet(label, fn) {
+  try {
+    return await fn();
+  } catch (err) {
+    console.log(`Skipping ${label}: ${err.message}`);
+    return null;
+  }
 }
 
 async function readExistingData() {
@@ -101,7 +109,7 @@ function compute24hChange(history, nowIso) {
   const point24h = findClosestPoint(
     history,
     nowMs - 24 * 60 * 60 * 1000,
-    6 * 60 * 60 * 1000
+    8 * 60 * 60 * 1000
   );
 
   if (!point24h) return null;
@@ -200,20 +208,46 @@ function buildItem({
   };
 }
 
-// GoldAPI
-async function getMetal(symbol, currency) {
-  if (!GOLDAPI_KEY) {
-    throw new Error("Missing GOLDAPI_KEY");
+function keepExistingOrEmpty(existingData, key, label, decimals) {
+  return getExistingItem(existingData, key) || {
+    key,
+    label,
+    price: 0,
+    change_24h: 0,
+    change_7d: 0,
+    sparkline: [0, 0, 0, 0, 0, 0, 0],
+    history: [],
+    decimals
+  };
+}
+
+function buildLiveOrExisting(existingData, nowIso, key, label, live, decimals) {
+  if (!live || typeof live.price !== "number") {
+    return keepExistingOrEmpty(existingData, key, label, decimals);
   }
 
-  const headers = {
-    "x-access-token": GOLDAPI_KEY,
-    "Content-Type": "application/json"
-  };
+  return buildItem({
+    existingData,
+    nowIso,
+    key,
+    label,
+    price: live.price,
+    decimals,
+    fallback24h: live.change_24h
+  });
+}
+
+async function getMetalGoldApi(symbol, currency) {
+  if (!GOLDAPI_KEY) throw new Error("Missing GOLDAPI_KEY");
 
   const current = await getJson(
     `https://www.goldapi.io/api/${symbol}/${currency}`,
-    { headers }
+    {
+      headers: {
+        "x-access-token": GOLDAPI_KEY,
+        "Content-Type": "application/json"
+      }
+    }
   );
 
   return {
@@ -222,7 +256,44 @@ async function getMetal(symbol, currency) {
   };
 }
 
-// CoinGecko
+async function getMetalMetalsDev(metal, currency) {
+  if (!METALS_DEV_KEY) throw new Error("Missing METALS_DEV_KEY");
+
+  const data = await getJson(
+    `https://api.metals.dev/v1/metal/spot?api_key=${METALS_DEV_KEY}&metal=${metal}&currency=${currency}`,
+    {
+      headers: {
+        "Accept": "application/json"
+      }
+    }
+  );
+
+  if (data.status !== "success" || !data.rate || typeof data.rate.price !== "number") {
+    throw new Error(`Bad Metals.Dev response for ${metal}`);
+  }
+
+  return {
+    price: data.rate.price,
+    change_24h: typeof data.rate.change_percent === "number" ? data.rate.change_percent : null
+  };
+}
+
+async function getMetalWithFallback(symbol, metalName, currency) {
+  const fromGoldApi = await safeGet(
+    `GoldAPI ${symbol}/${currency}`,
+    () => getMetalGoldApi(symbol, currency)
+  );
+
+  if (fromGoldApi) return fromGoldApi;
+
+  const fromMetalsDev = await safeGet(
+    `Metals.Dev ${metalName}/${currency}`,
+    () => getMetalMetalsDev(metalName, currency)
+  );
+
+  return fromMetalsDev;
+}
+
 async function getCoin(id, vs = "cad") {
   const headers = COINGECKO_API_KEY
     ? { "x-cg-demo-api-key": COINGECKO_API_KEY }
@@ -239,7 +310,6 @@ async function getCoin(id, vs = "cad") {
   };
 }
 
-// FX latest
 async function getFxLatest(base) {
   const data = await getJson(`https://open.er-api.com/v6/latest/${base}`);
 
@@ -264,78 +334,42 @@ async function main() {
     tryRates,
     cadRates
   ] = await Promise.all([
-    Promise.resolve(null),
-    Promise.resolve(null),
-    getCoin("bitcoin", "cad"),
-    getCoin("ethereum", "cad"),
-    getFxLatest("USD"),
-    getFxLatest("EUR"),
-    getFxLatest("TRY"),
-    getFxLatest("CAD")
+    getMetalWithFallback("XAU", "gold", "CAD"),
+    getMetalWithFallback("XAG", "silver", "CAD"),
+    safeGet("bitcoin", () => getCoin("bitcoin", "cad")),
+    safeGet("ethereum", () => getCoin("ethereum", "cad")),
+    safeGet("USD rates", () => getFxLatest("USD")),
+    safeGet("EUR rates", () => getFxLatest("EUR")),
+    safeGet("TRY rates", () => getFxLatest("TRY")),
+    safeGet("CAD rates", () => getFxLatest("CAD"))
   ]);
 
   const items = [
-    getExistingItem(existingData, "xaucad"),
-    getExistingItem(existingData, "xagcad"),
-    buildItem({
-      existingData,
-      nowIso,
-      key: "btccad",
-      label: "BTC/CAD",
-      price: btc.price,
-      decimals: 0,
-      fallback24h: btc.change_24h
-    }),
-    buildItem({
-      existingData,
-      nowIso,
-      key: "ethcad",
-      label: "ETH/CAD",
-      price: eth.price,
-      decimals: 0,
-      fallback24h: eth.change_24h
-    }),
-    buildItem({
-      existingData,
-      nowIso,
-      key: "usdcad",
-      label: "USD/CAD",
-      price: usdRates.CAD,
-      decimals: 4
-    }),
-    buildItem({
-      existingData,
-      nowIso,
-      key: "eurcad",
-      label: "EUR/CAD",
-      price: eurRates.CAD,
-      decimals: 4
-    }),
-    buildItem({
-      existingData,
-      nowIso,
-      key: "trycad",
-      label: "TRY/CAD",
-      price: tryRates.CAD,
-      decimals: 4
-    }),
-    buildItem({
-      existingData,
-      nowIso,
-      key: "cadirr",
-      label: "CAD/IRR",
-      price: cadRates.IRR,
-      decimals: 0
-    }),
-    buildItem({
-      existingData,
-      nowIso,
-      key: "usdirr",
-      label: "USD/IRR",
-      price: usdRates.IRR,
-      decimals: 0
-    })
-  ].filter(Boolean);
+    buildLiveOrExisting(existingData, nowIso, "xaucad", "Gold (XAU/CAD)", gold, 2),
+    buildLiveOrExisting(existingData, nowIso, "xagcad", "Silver (XAG/CAD)", silver, 2),
+    buildLiveOrExisting(existingData, nowIso, "btccad", "BTC/CAD", btc, 0),
+    buildLiveOrExisting(existingData, nowIso, "ethcad", "ETH/CAD", eth, 0),
+
+    usdRates
+      ? buildItem({ existingData, nowIso, key: "usdcad", label: "USD/CAD", price: usdRates.CAD, decimals: 4 })
+      : keepExistingOrEmpty(existingData, "usdcad", "USD/CAD", 4),
+
+    eurRates
+      ? buildItem({ existingData, nowIso, key: "eurcad", label: "EUR/CAD", price: eurRates.CAD, decimals: 4 })
+      : keepExistingOrEmpty(existingData, "eurcad", "EUR/CAD", 4),
+
+    tryRates
+      ? buildItem({ existingData, nowIso, key: "trycad", label: "TRY/CAD", price: tryRates.CAD, decimals: 4 })
+      : keepExistingOrEmpty(existingData, "trycad", "TRY/CAD", 4),
+
+    cadRates
+      ? buildItem({ existingData, nowIso, key: "cadirr", label: "CAD/IRR", price: cadRates.IRR, decimals: 0 })
+      : keepExistingOrEmpty(existingData, "cadirr", "CAD/IRR", 0),
+
+    usdRates
+      ? buildItem({ existingData, nowIso, key: "usdirr", label: "USD/IRR", price: usdRates.IRR, decimals: 0 })
+      : keepExistingOrEmpty(existingData, "usdirr", "USD/IRR", 0)
+  ];
 
   const payload = {
     updated_iso: nowIso,
