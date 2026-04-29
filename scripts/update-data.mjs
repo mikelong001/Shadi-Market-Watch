@@ -265,7 +265,7 @@ async function main() {
     cadRates
   ] = await Promise.all([
     getMetal("XAU", "CAD"),
-    getMetal("XAG", "CAD"),
+    Promise.resolve(null),
     getCoin("bitcoin", "cad"),
     getCoin("ethereum", "cad"),
     getFxLatest("USD"),
@@ -284,15 +284,7 @@ async function main() {
       decimals: 2,
       fallback24h: gold.change_24h
     }),
-    buildItem({
-      existingData,
-      nowIso,
-      key: "xagcad",
-      label: "Silver (XAG/CAD)",
-      price: silver.price,
-      decimals: 2,
-      fallback24h: silver.change_24h
-    }),
+    getExistingItem(existingData, "xagcad"),
     buildItem({
       existingData,
       nowIso,
@@ -351,7 +343,7 @@ async function main() {
       price: usdRates.IRR,
       decimals: 0
     })
-  ];
+  ].filter(Boolean);
 
   const payload = {
     updated_iso: nowIso,
