@@ -264,7 +264,7 @@ async function main() {
     tryRates,
     cadRates
   ] = await Promise.all([
-    getMetal("XAU", "CAD"),
+    Promise.resolve(null),
     Promise.resolve(null),
     getCoin("bitcoin", "cad"),
     getCoin("ethereum", "cad"),
@@ -275,15 +275,7 @@ async function main() {
   ]);
 
   const items = [
-    buildItem({
-      existingData,
-      nowIso,
-      key: "xaucad",
-      label: "Gold (XAU/CAD)",
-      price: gold.price,
-      decimals: 2,
-      fallback24h: gold.change_24h
-    }),
+    getExistingItem(existingData, "xaucad"),
     getExistingItem(existingData, "xagcad"),
     buildItem({
       existingData,
